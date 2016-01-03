@@ -13,6 +13,7 @@ var optionsDefaults = {
 , panEnabled: true // enable or disable panning (default enabled)
 , controlIconsEnabled: false // insert icons to give user an option in addition to mouse events to control pan/zoom (default disabled)
 , zoomEnabled: true // enable or disable zooming (default enabled)
+, separateZoomsEnabled: false // enable or disable separate zooms mode (default disabled for backward compatibility)
 , dblClickZoomEnabled: true // enable or disable zooming by double clicking (default enabled)
 , mouseWheelZoomEnabled: true // enable or disable zooming by mouse wheel (default enabled)
 , preventMouseEventsDefault: true // enable or disable preventDefault for mouse events
@@ -60,6 +61,7 @@ SvgPanZoom.prototype.init = function(svg, options) {
   , contain: this.options.contain
   , center: this.options.center
   , refreshRate: this.options.refreshRate
+  , separateZoomsEnabled: this.options.separateZoomsEnabled
   // Put callbacks into functions as they can change through time
   , beforeZoom: function(oldScale, newScale) {
       if (that.viewport && that.options.beforeZoom) {return that.options.beforeZoom(oldScale, newScale)}
@@ -244,33 +246,68 @@ SvgPanZoom.prototype.handleMouseWheel = function(evt) {
  * Zoom in at a SVG point
  *
  * @param  {SVGPoint} point
- * @param  {Float} zoomScale    Number representing how much to zoom
+ * @param  {Float|Object} zoomScale    Number representing how much to zoom or {x:Number, y:Number} representing different scales (requires `separateZoomsEnabled` option)
  * @param  {Boolean} zoomAbsolute Default false. If true, zoomScale is treated as an absolute value.
  *                                Otherwise, zoomScale is treated as a multiplied (e.g. 1.10 would zoom in 10%)
  */
 SvgPanZoom.prototype.zoomAtPoint = function(zoomScale, point, zoomAbsolute) {
-  var originalState = this.viewport.getOriginalState()
+  var originalState = this.viewport.getOriginalState(),
+    scaleX = 1,
+    scaleY = 1,
+    zoomScaleX, zoomScaleY,
+    relativeZoomBounds = {
+      min: null,
+      max: null
+    };
+
+  if (this.options.separateZoomsEnabled && Utils.isObject(zoomScale)) {
+    zoomScaleX = zoomScale.x;
+    zoomScaleY = zoomScale.y;
+  } else {
+    zoomScaleX = zoomScaleY = zoomScale;
+  }
+
+  if(this.options.separateZoomsEnabled && Utils.isObject(this.options.minZoom)) {
+    relativeZoomBounds.min = {
+      x: this.options.minZoom.x * originalState.zoomX,
+      y: this.options.minZoom.y * originalState.zoomY
+    };
+  } else {
+    minZoomX = minZoomY = this.options.minZoom;
+  }
+
+  if(this.options.separateZoomsEnabled && Utils.isObject(this.options.maxZoom)) {
+    maxZoomX = this.options.maxZoom.x;
+    maxZoomY = this.options.maxZoom.y;
+  } else {
+    maxZoomX = maxZoomY = this.options.maxZoom;
+  }
 
   if (!zoomAbsolute) {
-    // Fit zoomScale in set bounds
-    if (this.getZoom() * zoomScale < this.options.minZoom * originalState.zoom) {
-      zoomScale = (this.options.minZoom * originalState.zoom) / this.getZoom()
-    } else if (this.getZoom() * zoomScale > this.options.maxZoom * originalState.zoom) {
-      zoomScale = (this.options.maxZoom * originalState.zoom) / this.getZoom()
+    // Fit scaleX in set bounds
+    scaleX = Math.max((minZoomX * originalState.zoomX) / this.getZooms().x, Math.min((maxZoomX * originalState.zoomX) / this.getZooms().x, zoomScaleX));
+
+    // Fit scaleY in set bounds
+    if (this.getZooms().y * zoomScaleY < minZoomY * originalState.zoomY) {
+      scaleY = (minZoomY * originalState.zoomY) / this.getZooms().y
+    } else if (this.getZooms().y * zoomScaleY > maxZoomY * originalState.zoomY) {
+      scaleY = (maxZoomY * originalState.zoomY) / this.getZooms().y
+    } else {
+      scaleY = zoomScaleY;
     }
   } else {
-    // Fit zoomScale in set bounds
-    zoomScale = Math.max(this.options.minZoom * originalState.zoom, Math.min(this.options.maxZoom * originalState.zoom, zoomScale))
-    // Find relative scale to achieve desired scale
-    zoomScale = zoomScale/this.getZoom()
+    // Fit scaleX in set bounds
+    scaleX = Math.max(minZoomX * originalState.zoomX, Math.min(maxZoomX * originalState.zoomX, zoomScaleX)) / this.getZooms().x
+    // Fit scaleY in set bounds
+    scaleY = Math.max(minZoomY * originalState.zoomY, Math.min(maxZoomY * originalState.zoomY, zoomScaleY)) / this.getZooms().y
   }
 
   var oldCTM = this.viewport.getCTM()
     , relativePoint = point.matrixTransform(oldCTM.inverse())
-    , modifier = this.svg.createSVGMatrix().translate(relativePoint.x, relativePoint.y).scale(zoomScale).translate(-relativePoint.x, -relativePoint.y)
+    , modifier = this.svg.createSVGMatrix().translate(relativePoint.x, relativePoint.y).scaleNonUniform(scaleX, scaleY).translate(-relativePoint.x, -relativePoint.y)
     , newCTM = oldCTM.multiply(modifier)
 
-  if (newCTM.a !== oldCTM.a) {
+  if (newCTM.a !== oldCTM.a || newCTM.d !== oldCTM.d) {
     this.viewport.setCTM(newCTM)
   }
 }
@@ -278,7 +315,7 @@ SvgPanZoom.prototype.zoomAtPoint = function(zoomScale, point, zoomAbsolute) {
 /**
  * Zoom at center point
  *
- * @param  {Float} scale
+ * @param  {Float|Object} scale Float for uniform scaling, {x, y} can be used for separate scales (requires separateZoomsEnabled)
  * @param  {Boolean} absolute Marks zoom scale as relative or absolute
  */
 SvgPanZoom.prototype.zoom = function(scale, absolute) {
@@ -288,7 +325,7 @@ SvgPanZoom.prototype.zoom = function(scale, absolute) {
 /**
  * Zoom used by public instance
  *
- * @param  {Float} scale
+ * @param  {Float|Object} scale Float for uniform scaling, {x, y} can be used for separate scales (requires separateZoomsEnabled)
  * @param  {Boolean} absolute Marks zoom scale as relative or absolute
  */
 SvgPanZoom.prototype.publicZoom = function(scale, absolute) {
@@ -302,7 +339,7 @@ SvgPanZoom.prototype.publicZoom = function(scale, absolute) {
 /**
  * Zoom at point used by public instance
  *
- * @param  {Float} scale
+ * @param  {Float|Object} scale Float for uniform scaling, {x, y} can be used for separate scales (requires separateZoomsEnabled)
  * @param  {SVGPoint|Object} point    An object that has x and y attributes
  * @param  {Boolean} absolute Marks zoom scale as relative or absolute
  */
@@ -325,8 +362,8 @@ SvgPanZoom.prototype.publicZoomAtPoint = function(scale, point, absolute) {
 }
 
 /**
- * Get zoom scale
- *
+ * Get zoom scale.
+ * Use getZooms() instead to get separate x/y scales
  * @return {Float} zoom scale
  */
 SvgPanZoom.prototype.getZoom = function() {
@@ -334,8 +371,16 @@ SvgPanZoom.prototype.getZoom = function() {
 }
 
 /**
+ * Get zoom scales.
+ * @return {Object}
+ */
+SvgPanZoom.prototype.getZooms = function() {
+  return this.viewport.getZooms()
+}
+
+/**
  * Get zoom scale for public usage
- *
+ * Use getRelativeZooms() instead to get separate x/y scales
  * @return {Float} zoom scale
  */
 SvgPanZoom.prototype.getRelativeZoom = function() {
@@ -343,13 +388,25 @@ SvgPanZoom.prototype.getRelativeZoom = function() {
 }
 
 /**
+ * Get zoom scales for public usage
+ * @return {Object} zoom scales for x and y
+ */
+SvgPanZoom.prototype.getRelativeZooms = function() {
+  return this.viewport.getRelativeZooms()
+}
+
+/**
  * Compute actual zoom from public zoom
  *
- * @param  {Float} zoom
- * @return {Float} zoom scale
+ * @param  {Float|Object} zoom Float for uniform scaling, {x, y} can be used for separate scales (requires separateZoomsEnabled)
+ * @return {Float|Object} zoom scale
  */
 SvgPanZoom.prototype.computeFromRelativeZoom = function(zoom) {
-  return zoom * this.viewport.getOriginalState().zoom
+  if(this.options.separateZoomsEnabled && Utils.isObject(zoom)) {
+    return {x: zoom.x * this.viewport.getOriginalState().zoomX, y: zoom.y * this.viewport.getOriginalState().zoomY };
+  } else {
+    return zoom * this.viewport.getOriginalState().zoomX;
+  }
 }
 
 /**
@@ -357,8 +414,9 @@ SvgPanZoom.prototype.computeFromRelativeZoom = function(zoom) {
  */
 SvgPanZoom.prototype.resetZoom = function() {
   var originalState = this.viewport.getOriginalState()
+  var zoom = (this.options.separateZoomsEnabled) ? {x: originalState.zoomX, y: originalState.zoomY } : originalState.zoomX;
 
-  this.zoom(originalState.zoom, true);
+  this.zoom(zoom, true);
 }
 
 /**
@@ -487,9 +545,23 @@ SvgPanZoom.prototype.handleMouseUp = function(evt) {
  */
 SvgPanZoom.prototype.fit = function() {
   var viewBox = this.viewport.getViewBox()
-    , newScale = Math.min(this.width/viewBox.width, this.height/viewBox.height)
+    , newScale = Math.min(this.width/viewBox.width, this.height/viewBox.height);
+  if(this.options.separateZoomsEnabled) {
+    var zooms = this.getZooms();
+    newScale = {x:1, y:1};
 
-  this.zoom(newScale, true)
+    // Compare the two aspect ratio.
+    // If the "rendered" (after scaling) client size is "wider" than the viewbox, scale X first to fit, then scale Y accordingly
+    if((zooms.x * this.width) / (zooms.y * this.height) >= viewBox.width / viewBox.height) {
+      newScale.x = this.width / viewBox.width;
+      newScale.y = (zooms.y * newScale.x) / zooms.x;
+    } else {
+      newScale.y = this.height / viewBox.height;
+      newScale.x = (zooms.x * newScale.y) / zooms.y;
+    }
+  }
+
+  this.zoom(newScale, true);
 }
 
 /**
@@ -498,7 +570,20 @@ SvgPanZoom.prototype.fit = function() {
  */
 SvgPanZoom.prototype.contain = function() {
   var viewBox = this.viewport.getViewBox()
-    , newScale = Math.max(this.width/viewBox.width, this.height/viewBox.height)
+    , newScale = Math.max(this.width/viewBox.width, this.height/viewBox.height);
+  if(this.options.separateZoomsEnabled) {
+    var zooms = this.getZooms();
+    newScale = {x:1, y:1};
+
+    // Same algorithm as fit, but with condition swapped
+    if((zooms.x * this.width) / (zooms.y * this.height) >= viewBox.width / viewBox.height) {
+      newScale.y = this.height / viewBox.height;
+      newScale.x = (zooms.x * newScale.y) / zooms.y;
+    } else {
+      newScale.x = this.width / viewBox.width;
+      newScale.y = (zooms.y * newScale.x) / zooms.x;
+    }
+  }
 
   this.zoom(newScale, true)
 }
@@ -509,8 +594,8 @@ SvgPanZoom.prototype.contain = function() {
  */
 SvgPanZoom.prototype.center = function() {
   var viewBox = this.viewport.getViewBox()
-    , offsetX = (this.width - (viewBox.width + viewBox.x * 2) * this.getZoom()) * 0.5
-    , offsetY = (this.height - (viewBox.height + viewBox.y * 2) * this.getZoom()) * 0.5
+    , offsetX = (this.width - (viewBox.width + viewBox.x * 2) * this.getZooms().x) * 0.5
+    , offsetY = (this.height - (viewBox.height + viewBox.y * 2) * this.getZooms().y) * 0.5
 
   this.getPublicInstance().pan({x: offsetX, y: offsetY})
 }
@@ -689,6 +774,7 @@ SvgPanZoom.prototype.getPublicInstance = function() {
     , zoomIn: function() {this.zoomBy(1 + that.options.zoomScaleSensitivity); return that.pi}
     , zoomOut: function() {this.zoomBy(1 / (1 + that.options.zoomScaleSensitivity)); return that.pi}
     , getZoom: function() {return that.getRelativeZoom()}
+    , getZooms: function() {return that.getRelativeZooms()}
       // Reset
     , resetZoom: function() {that.resetZoom(); return that.pi}
     , resetPan: function() {that.resetPan(); return that.pi}
