@@ -188,7 +188,7 @@ ShadowViewport.prototype.getZoom = function() {
  * @return {Object}
  */
 ShadowViewport.prototype.getZooms = function() {
-  return {x: this.activeState.zoomX, y: this.activeState.zoomY };
+  return {x: this.activeState.zoomX, y: this.activeState.zoomY};
 }
 
 /**
@@ -230,7 +230,7 @@ ShadowViewport.prototype.computeRelativeZoom = function(scale) {
  * @return {Object} zoom scales for x and y
  */
 ShadowViewport.prototype.computeRelativeZooms = function(scaleX, scaleY) {
-  return {x:scaleX / this.originalState.zoomX, y:scaleY / this.originalState.zoomY };
+  return {x:scaleX / this.originalState.zoomX, y:scaleY / this.originalState.zoomY};
 }
 
 /**
@@ -275,13 +275,13 @@ ShadowViewport.prototype.setCTM = function(newCTM) {
     if (willZoom) {
       if(this.options.separateZoomsEnabled) {
         var canZoom = this.options.beforeZoom(this.getRelativeZooms(), this.computeRelativeZooms(newCTM.a, newCTM.d));
-        var preventZoomX = false,
-            preventZoomY = false;
+        var preventZoomX = false
+            , preventZoomY = false;
         if(canZoom === false) {
           newCTM.a = this.getZooms().x;
           newCTM.d = this.getZooms().y;
 
-          preventZoomX = preventPanY = true;
+          preventZoomX = preventZoomY = true;
         } else if (Utils.isObject(canZoom)) {
           if(canZoom.x === false) {
             // Prevent horizontal scaling

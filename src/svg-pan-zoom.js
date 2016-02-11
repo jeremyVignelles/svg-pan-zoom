@@ -251,13 +251,14 @@ SvgPanZoom.prototype.handleMouseWheel = function(evt) {
  *                                Otherwise, zoomScale is treated as a multiplied (e.g. 1.10 would zoom in 10%)
  */
 SvgPanZoom.prototype.zoomAtPoint = function(zoomScale, point, zoomAbsolute) {
-  var originalState = this.viewport.getOriginalState(),
-    scaleX = 1,
-    scaleY = 1,
-    zoomScaleX, zoomScaleY,
-    relativeZoomBounds = {
-      min: null,
-      max: null
+  var originalState = this.viewport.getOriginalState()
+    , scaleX = 1
+    , scaleY = 1
+    , zoomScaleX
+    , zoomScaleY
+    , relativeZoomBounds = {
+      min: null
+      , max: null
     };
 
   if (this.options.separateZoomsEnabled && Utils.isObject(zoomScale)) {
@@ -269,8 +270,8 @@ SvgPanZoom.prototype.zoomAtPoint = function(zoomScale, point, zoomAbsolute) {
 
   if(this.options.separateZoomsEnabled && Utils.isObject(this.options.minZoom)) {
     relativeZoomBounds.min = {
-      x: this.options.minZoom.x * originalState.zoomX,
-      y: this.options.minZoom.y * originalState.zoomY
+      x: this.options.minZoom.x * originalState.zoomX
+      , y: this.options.minZoom.y * originalState.zoomY
     };
   } else {
     minZoomX = minZoomY = this.options.minZoom;
@@ -403,7 +404,7 @@ SvgPanZoom.prototype.getRelativeZooms = function() {
  */
 SvgPanZoom.prototype.computeFromRelativeZoom = function(zoom) {
   if(this.options.separateZoomsEnabled && Utils.isObject(zoom)) {
-    return {x: zoom.x * this.viewport.getOriginalState().zoomX, y: zoom.y * this.viewport.getOriginalState().zoomY };
+    return {x: zoom.x * this.viewport.getOriginalState().zoomX, y: zoom.y * this.viewport.getOriginalState().zoomY};
   } else {
     return zoom * this.viewport.getOriginalState().zoomX;
   }
@@ -414,7 +415,7 @@ SvgPanZoom.prototype.computeFromRelativeZoom = function(zoom) {
  */
 SvgPanZoom.prototype.resetZoom = function() {
   var originalState = this.viewport.getOriginalState()
-  var zoom = (this.options.separateZoomsEnabled) ? {x: originalState.zoomX, y: originalState.zoomY } : originalState.zoomX;
+  var zoom = (this.options.separateZoomsEnabled) ? {x: originalState.zoomX, y: originalState.zoomY} : originalState.zoomX;
 
   this.zoom(zoom, true);
 }
